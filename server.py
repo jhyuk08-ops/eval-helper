@@ -400,7 +400,7 @@ def generate():
 }}
 """
 
-        candidate_models = ['gemini-3.6-flash', 'gemini-2.5-flash']
+        candidate_models = ['gemini-3.6-flash', 'gemini-3.5-flash']
         response = None
         last_err = None
 
