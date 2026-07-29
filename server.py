@@ -17,11 +17,33 @@ def is_generic_name(name):
     """영역명이 기본값(수행평가1, 수행평가2 등)이거나 비어있는지 검사"""
     if not name:
         return True
-    clean = re.sub(r'\s+', '', name)
+    clean = re.sub(r'\s+', '', str(name))
     generic_list = ['수행평가1', '수행평가2', '수행평가3', '수행평가4', '수행평가', '영역1', '영역2', '영역3']
     if clean in generic_list or (clean.startswith('수행평가') and len(clean) <= 6):
         return True
     return False
+
+def build_score_array(max_s, min_s, step):
+    """최고점, 최저점, 급간을 바탕으로 점수 배열 생성"""
+    try:
+        max_s = int(max_s)
+        min_s = int(min_s)
+        step = int(step) if int(step) > 0 else 1
+    except Exception:
+        max_s, min_s, step = 10, 2, 2
+
+    if min_s > max_s:
+        max_s, min_s = min_s, max_s
+
+    scores = []
+    curr = max_s
+    while curr >= min_s:
+        scores.append(curr)
+        curr -= step
+
+    if not scores:
+        scores = [max_s]
+    return scores
 
 @app.route('/')
 def index():
@@ -116,7 +138,59 @@ def generate():
 
         subject_title = detail_subject if detail_subject else main_subject
 
-        # Gemini 3.6 Flash 모델 지정
+        # 수행평가 배점/급간/기본점수 전처리 및 계산
+        processed_perf_list = []
+        for perf in perf_list:
+            base_s = int(perf.get('baseScore', 0) or 0)
+            user_elems = perf.get('evalElements', [])
+            
+            elem_info_list = []
+            element_max_sum = 0
+            element_min_sum = 0
+            
+            if user_elems:
+                for elem in user_elems:
+                    e_name = elem.get('name', '').strip()
+                    m_s = int(elem.get('maxScore', 10) or 10)
+                    l_s = int(elem.get('minScore', 2) or 2)
+                    st = int(elem.get('step') or elem.get('scoreStep') or 2)
+                    
+                    score_arr = build_score_array(m_s, l_s, st)
+                    element_max_sum += m_s
+                    element_min_sum += l_s
+                    
+                    elem_info_list.append({
+                        "name": e_name if e_name else "자동생성 필요",
+                        "target_scores": score_arr,
+                        "maxScore": m_s,
+                        "minScore": l_s,
+                        "step": st
+                    })
+            else:
+                # 요소가 비어있는 경우 기본 예시 요소 구성
+                arr1 = build_score_array(6, 2, 2)
+                arr2 = build_score_array(6, 2, 2)
+                element_max_sum = 12
+                element_min_sum = 4
+                elem_info_list = [
+                    {"name": "개념 이해 및 식 세우기", "target_scores": arr1, "maxScore": 6, "minScore": 2, "step": 2},
+                    {"name": "문제 해결 과정 및 논리성", "target_scores": arr2, "maxScore": 6, "minScore": 2, "step": 2}
+                ]
+
+            total_max = element_max_sum + base_s
+            total_min = element_min_sum + base_s
+            
+            processed_perf_list.append({
+                "name": perf.get('name', ''),
+                "ratio": perf.get('ratio', 0),
+                "baseScore": base_s,
+                "totalMaxScore": total_max,
+                "totalMinScore": total_min,
+                "standards": perf.get('standards', []),
+                "elements": elem_info_list
+            })
+
+        # Gemini 3.6 Flash 모델 활용
         model = genai.GenerativeModel('gemini-3.6-flash')
 
         prompt = f"""
@@ -127,54 +201,53 @@ def generate():
 - 학년/학기: {grade}학년 {semester}
 - 교과: {main_subject} ({subject_title})
 
-[수행평가 입력 데이터]
-{json.dumps(perf_list, ensure_ascii=False, indent=2)}
+[수행평가 영역 및 요소 분석 데이터]
+{json.dumps(processed_perf_list, ensure_ascii=False, indent=2)}
 
 [작성 및 출력 규칙]
 1. 문체 제한: 절대 '~합니다', '~입니다', '~하여야 합니다' 등의 경어체(~합니다 체)를 사용하지 마십시오.
    반드시 **'~한다', '~함', '~이다', '~수 있다'**와 같은 개조식/평서문(~하다 체)을 사용하십시오.
 2. 수행평가 영역명 자동 보완:
-   - 입력된 수행평가 영역명(`name`)이 '수행평가1', '수행평가2' 등 기본값이거나 비어있는 경우, 해당 영역에 지정된 [선택 성취기준]을 분석하여 이에 잘 맞는 구체적이고 전문적인 영역명(예: '서술형 평가', '공학도구 활용 탐구 보고서', '주제별 포트폴리오' 등)을 새로 작명해서 `name` 필드에 넣어주세요.
-3. 세부 평가요소 및 루브릭 자동 보완:
-   - 각 수행평가의 평가요소(`evalElements`)가 적혀있지 않거나 비어있는 경우, 성취기준에 알맞은 2~3개의 세부 평가요소(예: '개념 이해 및 식 세우기', '풀이 과정의 논리성 및 계산', '의사소통 및 최종 결론 도출' 등)를 직접 생성하여 rubrics를 완성하십시오.
+   - 입력된 수행평가 영역명(`name`)이 '수행평가1', '수행평가2' 등 기본값이거나 비어있는 경우, 선택된 성취기준을 분석하여 알맞은 구체적 영역명(예: '서술형 평가', '공학도구 활용 탐구 보고서' 등)으로 새로 작명해서 `name` 필드에 넣어주세요.
+3. 세부 평가요소 및 급간별 채점 기준(criteria) 1:1 매핑:
+   - 각 평가요소의 `target_scores` 배열(예: [5, 3, 1])의 개수 및 각 점수에 **정확히 1:1로 대응**하는 `criteria` (채점기준 설명) 목록을 작성해주십시오.
+   - 예시: `target_scores`가 [5, 3, 1]이면 `criteria` 배열에는 [5점 기준 설명], [3점 기준 설명], [1점 기준 설명] 순서대로 정확히 3개의 문장이 들어가야 합니다.
+   - 만약 평가요소명(`name`)이 '자동생성 필요'로 되어있다면 성취기준에 부합하는 구체적인 평가요소명을 새로 만들어 지정하십시오.
 
-반드시 **오직 순수한 JSON 데이터만** 출력하십시오 (마크다운 ```json 코드블록 및 추가 서론/결론 문구 금지):
+반드시 **오직 순수한 JSON 데이터만** 출력하십시오 (마크다운 ```json 및 설명 문구 금지):
 {{
   "purposes": [
-    "교과 핵심 개념, 원리, 법칙을 이해하고 수학적으로 추론하며 의사소통하는 능력을 길러 문제를 합리적이고 창의적으로 해결한다.",
-    "생활 주변과 사회 및 자연 현상을 교과 개념으로 관찰하고 분석하여 학문의 유용성을 인식하게 한다.",
-    "교과에 대한 흥미와 자신감을 바탕으로 성실하고 주도적인 학습 역량을 기른다."
+    "교과 핵심 개념과 원리를 이해하고 문제를 합리적으로 해결하는 능력을 길러준다.",
+    "실생활 문제 해결을 통해 교과의 유용성과 가치를 인식하게 한다.",
+    "자기주도적 학습 태도와 협력적 의사소통 역량을 함양한다."
   ],
   "directions": [
-    "학생의 인지적 발달 수준을 고려하여 교과 역량을 균형 있게 평가한다.",
-    "과정 중심 수행평가를 강화하여 학생의 성장과 개별 맞춤형 피드백을 제공한다.",
-    "서술형 평가, 포트폴리오 등 다양한 평가 방법을 적용한다."
+    "인지적 발달 수준을 고려하여 교과 역량을 균형 있게 평가한다.",
+    "과정 중심 수행평가를 강화하여 성장을 돕는 맞춤형 피드백을 제공한다.",
+    "다양한 평가 기법을 적용하여 학생의 종합적 사고력을 측정한 평가를 실시한다."
   ],
   "policies": [
     "성적반영 비율은 정기시험 {exam_ratios[0]+exam_ratios[1]}%, 수행평가 {100-(exam_ratios[0]+exam_ratios[1])}%로 한다.",
     "정기시험은 학기당 2회 실시한다.",
-    "서·논술형 평가는 수업 중에 실시하며, 단편적 지식보다는 논리적 사고력과 문제해결력을 측정한다.",
-    "명확한 채점기준표를 사전에 마련하여 객관적으로 채점한다.",
-    "교과협의회를 통하여 신뢰성 있는 평가를 실시한다.",
-    "평가 결과는 학생의 성장을 돕고 수업을 개선하는 자료로 활용한다."
+    "서·논술형 평가는 수업 중에 실시하며, 명확한 채점 기준표를 사전에 공개한다.",
+    "교과협의회를 통하여 객관성과 신뢰성을 확보한다.",
+    "평가 결과는 학생 피드백 및 수업 개선 자료로 활용한다."
   ],
   "evaluations": [
     {{
       "index": 0,
       "name": "성취기준에 알맞게 정제되거나 구체화된 영역명",
-      "level_high": "[상] 성취기준의 핵심 개념을 완벽히 이해하고, 논리적인 수식과 과정으로 오차 없이 문제를 해결 및 서술할 수 있다.",
-      "level_mid": "[중] 핵심 개념을 이해하여 해결 과정을 전개할 수 있으나, 일부분 계산 실수가 있거나 논리적 비약이 존재한다.",
-      "level_low": "[하] 기초적인 개념 파악이 미흡하여 문제 해결을 위한 식을 올바르게 세우지 못하고 해결력이 떨어진다.",
+      "level_high": "[상] 성취기준의 핵심 개념을 완벽히 이해하고 논리적으로 문제를 해결할 수 있다.",
+      "level_mid": "[중] 핵심 개념을 이해하나 과정에 일부 오류나 서술 미흡함이 있다.",
+      "level_low": "[하] 기초 개념 이해가 미흡하여 핵심 과제를 완성하지 못한다.",
       "rubrics": [
         {{
           "element": "세부 평가요소명",
           "criteria": [
-            "최상 수준 채점 기준 설명 (~함 또는 ~한다 체)",
-            "우수 수준 채점 기준 설명",
-            "보통 수준 채점 기준 설명",
-            "미흡 수준 채점 기준 설명"
-          ],
-          "scores": ["10점", "8점", "5점", "2점"]
+            "최고점 해당 채점 기준 설명 (~함 또는 ~한다 체)",
+            "중간점 해당 채점 기준 설명",
+            "최저점 해당 채점 기준 설명"
+          ]
         }}
       ]
     }}
@@ -228,7 +301,7 @@ def generate():
         for std in exam_standards.get('2차 정기시험', []):
             p_std1.add_run(f"  - {std}\n")
 
-        # 2. 평가의 목적 (~하다 체)
+        # 2. 평가의 목적
         doc.add_heading("2. 평가의 목적", level=1)
         purposes = ai_data.get('purposes', []) if ai_data else []
         labels = ['가', '나', '다', '라', '마']
@@ -241,7 +314,7 @@ def generate():
         else:
             doc.add_paragraph("  가. 교과 핵심 개념과 원리를 이해하고 문제해결 능력을 함양한다.")
 
-        # 3. 평가의 기본 방향과 방침 (~하다 체)
+        # 3. 평가의 기본 방향과 방침
         doc.add_heading("3. 평가의 기본 방향과 방침", level=1)
         p_dir = doc.add_paragraph()
         p_dir.add_run("  가. 기본 방향\n").bold = True
@@ -265,21 +338,21 @@ def generate():
         t4 = doc.add_table(rows=1, cols=3)
         t4.style = 'Table Grid'
         h4 = t4.rows[0].cells
-        h4[0].paragraphs[0].add_run("수행평가 영역명 (비율)").bold = True
+        h4[0].paragraphs[0].add_run("수행평가 영역명 (비율/만점)").bold = True
         h4[1].paragraphs[0].add_run("성취기준").bold = True
         h4[2].paragraphs[0].add_run("성취수준 (상 / 중 / 하)").bold = True
 
-        resolved_names = []  # 보완된 영역명 저장
+        resolved_names = []
 
-        for idx, perf in enumerate(perf_list):
-            raw_name = perf.get('name', '').strip()
-            p_ratio = perf.get('ratio', 0)
-            p_stds = perf.get('standards', [])
+        for idx, proc_perf in enumerate(processed_perf_list):
+            raw_name = proc_perf.get('name', '').strip()
+            p_ratio = proc_perf.get('ratio', 0)
+            p_stds = proc_perf.get('standards', [])
+            total_max = proc_perf.get('totalMaxScore', 20)
             
             ai_eval = eval_list[idx] if idx < len(eval_list) else {}
             ai_name = ai_eval.get('name', '').strip()
 
-            # 영역명이 '수행평가1' 등 기본값이거나 없으면 AI가 생성한 이름 사용
             if is_generic_name(raw_name) and ai_name:
                 display_name = ai_name
             else:
@@ -288,7 +361,7 @@ def generate():
             resolved_names.append(display_name)
 
             row_cells = t4.add_row().cells
-            row_cells[0].paragraphs[0].add_run(f"{display_name}({p_ratio}%)")
+            row_cells[0].paragraphs[0].add_run(f"{display_name}\n({p_ratio}%, 만점 {total_max}점)")
             
             std_p = row_cells[1].paragraphs[0]
             for std in p_stds:
@@ -296,20 +369,25 @@ def generate():
                 
             lvl_p = row_cells[2].paragraphs[0]
             lh = ai_eval.get('level_high', '[상] 성취기준의 핵심 개념을 완벽히 이해하고 상황에 알맞게 적용할 수 있다.')
-            lm = ai_eval.get('level_mid', '[중] 성취기준의 내용을 대체로 이해하나 일부 서술 및 적용 과정에 미흡함이 있다.')
-            ll = ai_eval.get('level_low', '[하] 성취기준 이해가 부족하여 핵심 과제를 완성하지 못하고 해결력이 떨어진다.')
+            lm = ai_eval.get('level_mid', '[중] 성취기준의 내용을 대체로 이해하나 일부 서술에 미흡함이 있다.')
+            ll = ai_eval.get('level_low', '[하] 성취기준 이해가 부족하여 핵심 과제를 완성하지 못한다.')
             lvl_p.add_run(f"{lh}\n{lm}\n{ll}")
 
         # 5. 수행평가 세부기준 (채점 기준표 표 형태)
         doc.add_heading("5. 수행평가 세부기준", level=1)
         sub_labels = ['가', '나', '다', '라', '마', '바']
 
-        for idx, perf in enumerate(perf_list):
+        for idx, proc_perf in enumerate(processed_perf_list):
             display_name = resolved_names[idx]
-            p_ratio = perf.get('ratio', 0)
+            p_ratio = proc_perf.get('ratio', 0)
+            base_s = proc_perf.get('baseScore', 0)
+            total_max = proc_perf.get('totalMaxScore', 20)
+            total_min = proc_perf.get('totalMinScore', 8)
             sub_lbl = sub_labels[idx] if idx < len(sub_labels) else f"({idx+1})"
             
-            doc.add_paragraph().add_run(f"{sub_lbl}. [{display_name}] 채점 기준표 (반영비율: {p_ratio}%)").bold = True
+            doc.add_paragraph().add_run(
+                f"{sub_lbl}. [{display_name}] 채점 기준표 (반영비율: {p_ratio}%, 만점: {total_max}점 / 기본점수: {base_s}점)"
+            ).bold = True
             
             t5 = doc.add_table(rows=1, cols=3)
             t5.style = 'Table Grid'
@@ -320,35 +398,61 @@ def generate():
 
             ai_eval = eval_list[idx] if idx < len(eval_list) else {}
             rubrics = ai_eval.get('rubrics', [])
-            
+            p_elements = proc_perf.get('elements', [])
+
             if rubrics:
-                for r in rubrics:
+                for r_idx, r in enumerate(rubrics):
                     r_cells = t5.add_row().cells
-                    r_cells[0].paragraphs[0].add_run(r.get('element', '세부 평가요소'))
+                    
+                    # 요소명 결정
+                    elem_name = r.get('element', '').strip()
+                    if not elem_name or elem_name == "자동생성 필요":
+                        if r_idx < len(p_elements):
+                            elem_name = p_elements[r_idx].get('name')
+                        if not elem_name or elem_name == "자동생성 필요":
+                            elem_name = f"평가 요소 {r_idx + 1}"
+                    r_cells[0].paragraphs[0].add_run(elem_name)
+
+                    # 점수 배열 및 AI 작성 채점기준 1:1 매핑
+                    target_scores = p_elements[r_idx].get('target_scores', []) if r_idx < len(p_elements) else []
+                    ai_criteria = r.get('criteria', [])
                     
                     crit_p = r_cells[1].paragraphs[0]
-                    for c in r.get('criteria', []):
-                        bullet = c if c.startswith('•') else f"• {c}"
-                        crit_p.add_run(f"{bullet}\n")
-                        
                     score_p = r_cells[2].paragraphs[0]
-                    for s in r.get('scores', []):
-                        score_p.add_run(f"{s}\n")
+                    
+                    if target_scores:
+                        for s_idx, sc in enumerate(target_scores):
+                            c_text = ai_criteria[s_idx] if s_idx < len(ai_criteria) else "해당 기준에 맞게 성실히 과제를 수행함"
+                            c_clean = re.sub(r'^[•\-\*\d점\s:]+', '', c_text).strip()
+                            crit_p.add_run(f"• [{sc}점] {c_clean}\n")
+                            score_p.add_run(f"{sc}점\n")
+                    else:
+                        for c in ai_criteria:
+                            c_clean = re.sub(r'^[•\-\*]+', '', c).strip()
+                            crit_p.add_run(f"• {c_clean}\n")
+                        for s in r.get('scores', []):
+                            score_p.add_run(f"{s}\n")
             else:
-                user_elems = perf.get('evalElements', [])
-                if user_elems:
-                    for elem in user_elems:
-                        r_cells = t5.add_row().cells
-                        r_cells[0].paragraphs[0].add_run(elem.get('name', '평가요소'))
-                        r_cells[1].paragraphs[0].add_run(f"• 해당 요소의 수행 능력이 완벽하고 완성도가 높음.\n• 보통 수준으로 수행함.\n• 수행 내용이 미흡함.")
-                        r_cells[2].paragraphs[0].add_run(f"최고 {elem.get('maxScore', 10)}점\n최저 {elem.get('minScore', 2)}점")
-                else:
+                # AI 응답 부재 시 Fallback
+                for e_info in p_elements:
                     r_cells = t5.add_row().cells
-                    r_cells[0].paragraphs[0].add_run("과제 수행 및 서술 능력")
-                    r_cells[1].paragraphs[0].add_run("• 과제 해결 과정이 논리적이고 정답을 정확히 제시함.\n• 과제 해결 과정에 일부 오차가 존재함.\n• 과제 수행이 미흡함.")
-                    r_cells[2].paragraphs[0].add_run("10점\n8점\n5점")
+                    r_cells[0].paragraphs[0].add_run(e_info.get('name', '평가 요소'))
+                    
+                    crit_p = r_cells[1].paragraphs[0]
+                    score_p = r_cells[2].paragraphs[0]
+                    
+                    for sc in e_info.get('target_scores', [6, 4, 2]):
+                        crit_p.add_run(f"• [{sc}점] 해당 요소 기준에 맞게 성실히 수행함\n")
+                        score_p.add_run(f"{sc}점\n")
 
-        # 파일 스트림 반환
+            # 기본점수 및 최고/최저점 안내 문구
+            if base_s > 0:
+                note_p = doc.add_paragraph()
+                note_p.add_run(
+                    f"  ※ 기본점수 {base_s}점이 부여되며, 세부 평가요소 득점 합계와 더하여 최종 성적을 산출함. (최고점: {total_max}점, 최저점: {total_min}점)"
+                )
+
+        # 파일 스트림 전달
         file_stream = io.BytesIO()
         doc.save(file_stream)
         file_stream.seek(0)
