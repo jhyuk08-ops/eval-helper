@@ -53,18 +53,33 @@ def get_subjects():
 def get_standards():
     try:
         data = request.get_json() or {}
+        school_type = data.get('schoolType', 'high')
         main_subject = data.get('교과', '')
         detail_subject = data.get('세부교과', '')
         
         target_subject = detail_subject if detail_subject else main_subject
         
-        file_path = os.path.join(DATA_DIR, f'{target_subject}.json')
-        if os.path.exists(file_path):
-            with open(file_path, 'r', encoding='utf-8') as f:
-                standards_data = json.load(f)
-            return jsonify({"success": True, "standards": standards_data})
+        # 중학교 / 고등학교 폴더 구조에 맞춘 경로 탐색
+        possible_paths = [
+            # 중학교: data/evaluation standard/middle/과학.json
+            os.path.join(DATA_DIR, 'evaluation standard', 'middle', f'{main_subject}.json'),
+            os.path.join(DATA_DIR, 'evaluation standard', 'middle', f'{target_subject}.json'),
+            # 고등학교: data/evaluation standard/high/사회/경제.json
+            os.path.join(DATA_DIR, 'evaluation standard', 'high', main_subject, f'{detail_subject}.json'),
+            os.path.join(DATA_DIR, 'evaluation standard', 'high', main_subject, f'{target_subject}.json'),
+            os.path.join(DATA_DIR, 'evaluation standard', 'high', f'{target_subject}.json'),
+            # 백업용 경로
+            os.path.join(DATA_DIR, f'{target_subject}.json')
+        ]
         
-        # 데이터 파일이 없을 경우 제공하는 기본 샘플 성취기준
+        # 파일이 실제로 존재하는 경로를 순서대로 확인하여 읽기
+        for file_path in possible_paths:
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    standards_data = json.load(f)
+                return jsonify({"success": True, "standards": standards_data})
+        
+        # 데이터 파일이 없을 경우 기본 제공 샘플 성취기준
         sample_standards = [
             f"[{target_subject}-01] 핵심 개념과 원리를 정확히 이해하고 관련 현상을 설명할 수 있다.",
             f"[{target_subject}-02] 다양한 탐구 방법과 자료를 활용하여 문제를 분석하고 해결할 수 있다.",
@@ -129,7 +144,7 @@ def generate():
         # 제목
         title_p = doc.add_paragraph()
         title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = title_p.add_run(f"2022 개정 교육과정 [{detail_subject}] 평가계획서")
+        run = title_p.add_run(f"2022 개정 교육과정 [{detail_subject if detail_subject else main_subject}] 평가계획서")
         run.font.name = '맑은 고딕'
         run.font.size = Pt(18)
         run.font.bold = True
@@ -175,7 +190,7 @@ def generate():
         doc.save(file_stream)
         file_stream.seek(0)
 
-        filename = f"평가계획서_{detail_subject}.docx"
+        filename = f"평가계획서_{detail_subject if detail_subject else main_subject}.docx"
         return send_file(
             file_stream,
             as_attachment=True,
