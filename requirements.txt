@@ -1,4 +1,6 @@
 Flask
-google-generativeai
 python-docx
+google-genai
+pandas
+openpyxl
 gunicorn
