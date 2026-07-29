@@ -111,8 +111,8 @@ def generate():
         exam_standards = json.loads(request.form.get('examStandards', '{}'))
         perf_list = json.loads(request.form.get('perfList', '[]'))
 
-        # Gemini 2.5 Flash 모델 사용
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        # Gemini 3.6 Flash 모델 사용
+        model = genai.GenerativeModel('gemini-3.6-flash')
 
         prompt = f"""
 당신은 2022 개정 교육과정 평가 전문가입니다. 아래 평가계획 정보를 바탕으로 각 수행평가 영역별 상세 평가 기준 및 채점 루브릭(상/중/하)을 구체적인 교사 어조로 작성해주세요.
