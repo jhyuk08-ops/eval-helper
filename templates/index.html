@@ -251,14 +251,17 @@
     </header>
 
     <form id="evalForm">
-        <!-- 0. API 키 입력 -->
-        <div class="card">
-            <div class="card-title">Gemini API 키</div>
-            <div class="form-group">
-                <label for="apiKey">Gemini API Key</label>
-                <input type="password" id="apiKey" required placeholder="AI Studio에서 발급받은 API 키를 입력하세요">
-            </div>
-        </div>
+        <!-- API 키 입력 섹션 -->
+<div class="mb-3">
+  <label for="apiKey" class="form-label">Gemini API Key</label>
+  <div class="input-group">
+    <input type="password" class="form-control" id="apiKey" name="apiKey" placeholder="API Key를 입력하세요">
+    <!-- 하이퍼링크 추가 -->
+    <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary">
+      Gemini API 가져오기
+    </a>
+  </div>
+</div>
 
         <!-- 1. 기본 정보 -->
         <div class="card">
