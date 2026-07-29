@@ -1,3 +1,4 @@
+from urllib.parse import quote  # 파일 상단 import 목록에 추가
 import os
 import json
 import re
@@ -641,12 +642,15 @@ def generate():
         doc.save(file_stream)
         file_stream.seek(0)
 
-        return send_file(
+        # 👇 response 변수로 받고 custom 헤더(X-Filename)를 추가해서 반환
+        response = send_file(
             file_stream,
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             as_attachment=True,
             download_name=filename
         )
+        response.headers['X-Filename'] = quote(filename)  # 한글 파일명 안전 전달
+        return response
 
     except Exception as e:
         print(f"[ERROR] 문서 생성 에러: {e}")
