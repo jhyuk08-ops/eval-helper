@@ -158,6 +158,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
 function loadSubjects() {
     const schoolType = document.getElementById('schoolType').value;
+    const detailSelect = document.getElementById('detailSubject');
+
     fetch('/get_subjects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -171,6 +173,7 @@ function loadSubjects() {
 
         if (schoolType === 'middle') {
             document.getElementById('detailSubjectGroup').style.display = 'none';
+            detailSelect.innerHTML = '';
             data.subjects.forEach(sub => {
                 mainSelect.innerHTML += `<option value="${sub}">${sub}</option>`;
             });
@@ -195,6 +198,8 @@ function onMainSubjectChange() {
         subjectHierarchy[mainSubject].forEach(sub => {
             detailSelect.innerHTML += `<option value="${sub}">${sub}</option>`;
         });
+    } else {
+        detailSelect.innerHTML = '';
     }
     loadStandards();
 }
@@ -202,7 +207,7 @@ function onMainSubjectChange() {
 function loadStandards() {
     const schoolType = document.getElementById('schoolType').value;
     const mainSubject = document.getElementById('mainSubject').value;
-    const detailSubject = document.getElementById('detailSubject').value;
+    const detailSubject = schoolType === 'high' ? document.getElementById('detailSubject').value : '';
 
     fetch('/get_standards', {
         method: 'POST',
@@ -214,7 +219,6 @@ function loadStandards() {
         if (!data.success) return;
         allSubjectStandards = data.standards || [];
         
-        // 1) 학기 성취기준 렌더링 (기본 전체선택)
         renderSemesterStandards();
         document.getElementById('selectAllSemester').checked = true;
     });
@@ -248,7 +252,6 @@ function getSelectedSemesterStandards() {
 }
 
 function onSemesterStandardsChange() {
-    // 학기 전체선택 체크박스 상태 업데이트
     const allBoxes = document.querySelectorAll('.semester-std');
     const checkedBoxes = document.querySelectorAll('.semester-std:checked');
     const selectAllSem = document.getElementById('selectAllSemester');
@@ -258,7 +261,6 @@ function onSemesterStandardsChange() {
 
     const activeStds = getSelectedSemesterStandards();
 
-    // 2) 선택된 학기 성취기준 기반으로 정기시험 및 수행평가 목록 동적 업데이트
     renderExamStandards(activeStds);
     refreshAllPerfStandards(activeStds);
 }
@@ -474,6 +476,10 @@ function submitForm() {
         return;
     }
 
+    const schoolType = document.getElementById('schoolType').value;
+    const mainSubject = document.getElementById('mainSubject').value;
+    const detailSubject = schoolType === 'high' ? document.getElementById('detailSubject').value : '';
+
     const exam1Ratio = parseInt(document.getElementById('exam1Ratio').value || 0);
     const exam2Ratio = parseInt(document.getElementById('exam2Ratio').value || 0);
 
@@ -514,11 +520,11 @@ function submitForm() {
 
     const formData = new FormData();
     formData.append('apiKey', apiKey);
-    formData.append('schoolType', document.getElementById('schoolType').value);
+    formData.append('schoolType', schoolType);
     formData.append('grade', document.getElementById('grade').value);
     formData.append('semester', document.getElementById('semester').value);
-    formData.append('교과', document.getElementById('mainSubject').value);
-    formData.append('세부교과', document.getElementById('detailSubject').value);
+    formData.append('교과', mainSubject);
+    formData.append('세부교과', detailSubject);
     formData.append('examRatios', JSON.stringify([exam1Ratio, exam2Ratio]));
     formData.append('examStandards', JSON.stringify({
         '1차 정기시험': exam1Stds,
@@ -539,7 +545,22 @@ function submitForm() {
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `평가계획서_${document.getElementById('detailSubject').value || document.getElementById('mainSubject').value}.docx`;
+                
+                // 오늘 날짜 및 시각(시분초) 포맷팅
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+
+                const dateStr = `${year}${month}${day}`;
+                const timeStr = `${hours}${minutes}${seconds}`;
+                const fileNameSubject = detailSubject || mainSubject;
+
+                // 파일명 설정: 평가계획서_과목명_날짜_시간.docx
+                a.download = `평가계획서_${fileNameSubject}_${dateStr}_${timeStr}.docx`;
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
