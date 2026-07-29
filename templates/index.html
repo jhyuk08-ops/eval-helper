@@ -675,20 +675,19 @@
             const a = document.createElement('a');
             a.href = downloadUrl;
 
-            // 👇 [수정 영역] HTTP 헤더에서 UTF-8 한글 파일명을 정확하게 추출하는 정규식 로직
-            const contentDisposition = response.headers.get('Content-Disposition');
+            // 👇 [수정] server.py에서 새로 추가한 X-Filename 헤더를 우선 읽어옵니다.
+            const xFilename = response.headers.get('X-Filename');
             let filename = '평가계획서.docx';
 
-            if (contentDisposition) {
-                // 1. UTF-8 인코딩된 파일명 우선 추출 (filename*=UTF-8''...)
-                const utf8FilenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
-                if (utf8FilenameMatch && utf8FilenameMatch[1]) {
-                    filename = decodeURIComponent(utf8FilenameMatch[1]);
-                } else {
-                    // 2. 일반 filename="..." 추출
-                    const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
-                    if (filenameMatch && filenameMatch[1]) {
-                        filename = decodeURIComponent(filenameMatch[1]);
+            if (xFilename) {
+                filename = decodeURIComponent(xFilename);
+            } else {
+                // 예비용 (Content-Disposition 파싱 - filename*_ 대응)
+                const contentDisposition = response.headers.get('Content-Disposition');
+                if (contentDisposition) {
+                    const utf8Match = contentDisposition.match(/filename[*_]=UTF-8''([^;]+)/i);
+                    if (utf8Match && utf8Match[1]) {
+                        filename = decodeURIComponent(utf8Match[1]);
                     }
                 }
             }
