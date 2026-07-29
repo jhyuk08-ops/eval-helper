@@ -28,7 +28,6 @@ def get_subjects():
                 subject_data = json.load(f)
             return jsonify({"success": True, **subject_data})
         
-        # 데이터 파일이 없을 경우 제공하는 기본값
         if school_type == 'middle':
             return jsonify({
                 "success": True,
@@ -59,27 +58,21 @@ def get_standards():
         
         target_subject = detail_subject if detail_subject else main_subject
         
-        # 중학교 / 고등학교 폴더 구조에 맞춘 경로 탐색
         possible_paths = [
-            # 중학교: data/evaluation standard/middle/과학.json
             os.path.join(DATA_DIR, 'evaluation standard', 'middle', f'{main_subject}.json'),
             os.path.join(DATA_DIR, 'evaluation standard', 'middle', f'{target_subject}.json'),
-            # 고등학교: data/evaluation standard/high/사회/경제.json
             os.path.join(DATA_DIR, 'evaluation standard', 'high', main_subject, f'{detail_subject}.json'),
             os.path.join(DATA_DIR, 'evaluation standard', 'high', main_subject, f'{target_subject}.json'),
             os.path.join(DATA_DIR, 'evaluation standard', 'high', f'{target_subject}.json'),
-            # 백업용 경로
             os.path.join(DATA_DIR, f'{target_subject}.json')
         ]
         
-        # 파일이 실제로 존재하는 경로를 순서대로 확인하여 읽기
         for file_path in possible_paths:
             if os.path.exists(file_path):
                 with open(file_path, 'r', encoding='utf-8') as f:
                     standards_data = json.load(f)
                 return jsonify({"success": True, "standards": standards_data})
         
-        # 데이터 파일이 없을 경우 기본 제공 샘플 성취기준
         sample_standards = [
             f"[{target_subject}-01] 핵심 개념과 원리를 정확히 이해하고 관련 현상을 설명할 수 있다.",
             f"[{target_subject}-02] 다양한 탐구 방법과 자료를 활용하여 문제를 분석하고 해결할 수 있다.",
@@ -98,7 +91,6 @@ def generate():
         if not user_api_key:
             return jsonify({"success": False, "error": "API 키가 전달되지 않았습니다."}), 400
 
-        # 사용자가 입력한 API 키 적용
         genai.configure(api_key=user_api_key)
 
         school_type = request.form.get('schoolType', '')
@@ -111,86 +103,220 @@ def generate():
         exam_standards = json.loads(request.form.get('examStandards', '{}'))
         perf_list = json.loads(request.form.get('perfList', '[]'))
 
-        # Gemini 3.6 Flash 모델 사용
+        subject_title = detail_subject if detail_subject else main_subject
+
+        # Gemini 3.6 Flash 모델 활용
         model = genai.GenerativeModel('gemini-3.6-flash')
 
         prompt = f"""
-당신은 2022 개정 교육과정 평가 전문가입니다. 아래 평가계획 정보를 바탕으로 각 수행평가 영역별 상세 평가 기준 및 채점 루브릭(상/중/하)을 구체적인 교사 어조로 작성해주세요.
+당신은 2022 개정 교육과정 평가 전문가입니다. 아래 제출된 정보를 바탕으로 평가계획서 세부 항목을 구체적인 교사 어조로 작성해주세요.
 
 [기본 정보]
 - 학교급: {'중학교' if school_type == 'middle' else '고등학교'}
 - 학년/학기: {grade}학년 {semester}
-- 교과: {main_subject} ({detail_subject})
+- 교과: {main_subject} ({subject_title})
 
-[지필평가 비율 및 성취기준]
-- 1차 정기시험 ({exam_ratios[0]}%): {', '.join(exam_standards.get('1차 정기시험', []))}
-- 2차 정기시험 ({exam_ratios[1]}%): {', '.join(exam_standards.get('2차 정기시험', []))}
-
-[수행평가 영역별 정보]
+[수행평가 정보]
 {json.dumps(perf_list, ensure_ascii=False, indent=2)}
 
-각 수행평가 영역마다 아래 항목이 포함되도록 명확히 구분하여 작성해 주세요:
-1. 평가 목적 및 방침
-2. 세부 평가요소 및 배점표
-3. 성취수준별(상/중/하) 구체적 채점기준 (루브릭)
+반드시 **오직 순수한 JSON 형식만** 출력해주세요 (마크다운 ```json 및 설명 문구 절대 금지):
+{{
+  "purposes": [
+    "평가 목적 가항목 (수학적 개념/원리 이해 및 문제해결 능력...)",
+    "평가 목적 나항목 (실생활 연결 및 유용성 인식...)",
+    "평가 목적 다항목 (흥미, 자신감 및 학습 역량...)"
+  ],
+  "directions": [
+    "인지적 발달 수준 고려 및 교과 역량 균형 평가",
+    "과정 중심 수행평가 강화 및 맞춤형 피드백 제공",
+    "서술형, 포트폴리오, 공학도구 활용 등 다양한 평가방법 적용"
+  ],
+  "policies": [
+    "성적반영 비율 설정 내용 (정기시험 비율 및 수행평가 비율 언급)",
+    "정기시험 횟수 언급",
+    "서·논술형 평가 수업 중 실시 및 평가 방식",
+    "객관적인 채점기준 사전 마련",
+    "교과협의회를 통한 신뢰성 있는 평가",
+    "평가 결과 피드백 및 수업 개선 활용"
+  ],
+  "evaluations": [
+    {{
+      "name": "수행평가 영역명",
+      "level_high": "[상] 해당 영역의 최고 수준 성취 기준...",
+      "level_mid": "[중] 해당 영역의 보통 수준 성취 기준...",
+      "level_low": "[하] 해당 영역의 미흡 수준 성취 기준...",
+      "rubrics": [
+        {{
+          "element": "세부 평가 요소명",
+          "criteria": [
+            "최상 수준 채점 기준 상세 설명",
+            "우수 수준 채점 기준 상세 설명",
+            "보통 수준 채점 기준 상세 설명",
+            "미흡 수준 채점 기준 상세 설명"
+          ],
+          "scores": ["10점", "8점", "5점", "2점"]
+        }}
+      ]
+    }}
+  ]
+}}
 """
 
         response = model.generate_content(prompt)
-        ai_text = response.text if response else "AI 내용 생성에 실패했습니다."
+        ai_data = None
+        if response and response.text:
+            raw_text = response.text.strip()
+            if raw_text.startswith("```json"):
+                raw_text = raw_text.split("```json", 1)[1]
+            if raw_text.startswith("```"):
+                raw_text = raw_text.split("```", 1)[1]
+            if raw_text.endswith("```"):
+                raw_text = raw_text.rsplit("```", 1)[0]
+            try:
+                ai_data = json.loads(raw_text.strip())
+            except Exception as pe:
+                print("JSON 파싱 에러:", pe)
 
-        # Word 문서 (.docx) 생성
+        # Word 문서 생성 시작
         doc = Document()
-        
-        # 제목
+
+        # 문서 제목
         title_p = doc.add_paragraph()
         title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = title_p.add_run(f"2022 개정 교육과정 [{detail_subject if detail_subject else main_subject}] 평가계획서")
+        run = title_p.add_run(f"2022 개정 교육과정 {subject_title} 평가계획서")
         run.font.name = '맑은 고딕'
         run.font.size = Pt(18)
         run.font.bold = True
 
-        # 1. 개요
+        # 1. 기본 정보 (표 형태)
         doc.add_heading("1. 기본 정보", level=1)
-        p = doc.add_paragraph()
-        p.add_run(f"• 학년/학기: {grade}학년 {semester}\n")
-        p.add_run(f"• 대상 교과: {main_subject} - {detail_subject}\n")
-        p.add_run(f"• 1차 정기시험 반영비율: {exam_ratios[0]}%\n")
-        p.add_run(f"• 2차 정기시험 반영비율: {exam_ratios[1]}%\n")
-
-        # 2. 성취기준
-        doc.add_heading("2. 평가 대상 성취기준", level=1)
-        p_exam = doc.add_paragraph()
-        p_exam.add_run("[1차 정기시험 평가 성취기준]\n").bold = True
-        for std in exam_standards.get('1차 정기시험', []):
-            p_exam.add_run(f"- {std}\n")
+        t1 = doc.add_table(rows=3, cols=2)
+        t1.style = 'Table Grid'
         
-        p_exam.add_run("\n[2차 정기시험 평가 성취기준]\n").bold = True
+        t1.cell(0, 0).paragraphs[0].add_run("학교급 및 학년").bold = True
+        t1.cell(0, 1).paragraphs[0].add_run(f"{'중학교' if school_type == 'middle' else '고등학교'} {grade}학년 {semester}")
+        
+        t1.cell(1, 0).paragraphs[0].add_run("정기시험 비율").bold = True
+        t1.cell(1, 1).paragraphs[0].add_run(f"1차 정기시험: {exam_ratios[0]}%, 2차 정기시험: {exam_ratios[1]}%")
+        
+        t1.cell(2, 0).paragraphs[0].add_run("정기시험 성취기준").bold = True
+        p_std1 = t1.cell(2, 1).paragraphs[0]
+        p_std1.add_run("■ 1차 정기시험:\n").bold = True
+        for std in exam_standards.get('1차 정기시험', []):
+            p_std1.add_run(f"  - {std}\n")
+        p_std1.add_run("\n■ 2차 정기시험:\n").bold = True
         for std in exam_standards.get('2차 정기시험', []):
-            p_exam.add_run(f"- {std}\n")
+            p_std1.add_run(f"  - {std}\n")
 
-        # 3. 수행평가 요약
-        doc.add_heading("3. 수행평가 영역 요약", level=1)
-        for idx, perf in enumerate(perf_list, 1):
-            doc.add_heading(f"3.{idx} {perf.get('name')} (반영비율: {perf.get('ratio')}%)", level=2)
-            p_perf = doc.add_paragraph()
-            p_perf.add_run("• 선택 성취기준:\n").bold = True
-            for std in perf.get('standards', []):
-                p_perf.add_run(f"  - {std}\n")
+        # 2. 평가의 목적
+        doc.add_heading("2. 평가의 목적", level=1)
+        purposes = ai_data.get('purposes', []) if ai_data else []
+        labels = ['가', '나', '다', '라', '마']
+        if purposes:
+            for idx, p_text in enumerate(purposes):
+                lbl = labels[idx] if idx < len(labels) else f"({idx+1})"
+                clean_p = p_text.replace(f"{lbl}.", "").strip()
+                p = doc.add_paragraph()
+                p.add_run(f"  {lbl}. {clean_p}")
+        else:
+            doc.add_paragraph("  가. 교과 핵심 개념과 원리를 이해하고 문제해결 능력을 함양한다.")
+
+        # 3. 평가의 기본 방향과 방침
+        doc.add_heading("3. 평가의 기본 방향과 방침", level=1)
+        p_dir = doc.add_paragraph()
+        p_dir.add_run("  가. 기본 방향\n").bold = True
+        directions = ai_data.get('directions', []) if ai_data else []
+        for idx, d_text in enumerate(directions, 1):
+            clean_d = d_text.replace(f"{idx})", "").strip()
+            p_dir.add_run(f"    {idx}) {clean_d}\n")
+
+        p_pol = doc.add_paragraph()
+        p_pol.add_run("  나. 방침\n").bold = True
+        policies = ai_data.get('policies', []) if ai_data else []
+        for idx, pol_text in enumerate(policies, 1):
+            clean_pol = pol_text.replace(f"{idx})", "").strip()
+            p_pol.add_run(f"    {idx}) {clean_pol}\n")
+
+        # 4. 성취기준 및 평가기준(상, 중, 하) (표 형태)
+        doc.add_heading("4. 성취기준 및 평가기준(상, 중, 하)", level=1)
+        t4 = doc.add_table(rows=1, cols=3)
+        t4.style = 'Table Grid'
+        h4 = t4.rows[0].cells
+        h4[0].paragraphs[0].add_run("수행평가 영역명 (비율)").bold = True
+        h4[1].paragraphs[0].add_run("성취기준").bold = True
+        h4[2].paragraphs[0].add_run("성취수준 (상 / 중 / 하)").bold = True
+
+        eval_list = ai_data.get('evaluations', []) if ai_data else []
+        eval_dict = {e.get('name'): e for e in eval_list}
+
+        for perf in perf_list:
+            p_name = perf.get('name', '')
+            p_ratio = perf.get('ratio', 0)
+            p_stds = perf.get('standards', [])
+            ai_eval = eval_dict.get(p_name, {})
+
+            row_cells = t4.add_row().cells
+            row_cells[0].paragraphs[0].add_run(f"{p_name}({p_ratio}%)")
             
-            p_perf.add_run("• 세부 평가요소:\n").bold = True
-            for elem in perf.get('evalElements', []):
-                p_perf.add_run(f"  - {elem.get('name')}: 최고 {elem.get('maxScore')}점 / 최저 {elem.get('minScore')}점\n")
+            # 성취기준 목록
+            std_p = row_cells[1].paragraphs[0]
+            for std in p_stds:
+                std_p.add_run(f"{std}\n")
+                
+            # 성취수준 (상/중/하)
+            lvl_p = row_cells[2].paragraphs[0]
+            lh = ai_eval.get('level_high', '성취기준을 완벽히 이해하고 적절히 적용할 수 있다.')
+            lm = ai_eval.get('level_mid', '성취기준을 대체로 이해하나 일부 서술에 미흡함이 있다.')
+            ll = ai_eval.get('level_low', '성취기준 이해가 부족하여 핵심 내용을 완성하지 못한다.')
+            lvl_p.add_run(f"{lh}\n{lm}\n{ll}")
 
-        # 4. AI 생성 상세 세부 기준
-        doc.add_heading("4. 수행평가 세부 평가기준 (Gemini 2.5 Flash 생성)", level=1)
-        doc.add_paragraph(ai_text)
+        # 5. 수행평가 세부기준 (영역별 세부 채점기준표 표 형태)
+        doc.add_heading("5. 수행평가 세부기준", level=1)
+        sub_labels = ['가', '나', '다', '라', '마', '바']
 
-        # 메모리 스트림으로 저장 후 반환
+        for idx, perf in enumerate(perf_list):
+            p_name = perf.get('name', '')
+            p_ratio = perf.get('ratio', 0)
+            sub_lbl = sub_labels[idx] if idx < len(sub_labels) else f"({idx+1})"
+            
+            doc.add_paragraph().add_run(f"{sub_lbl}. [{p_name}] 채점 기준표 (반영비율: {p_ratio}%)").bold = True
+            
+            t5 = doc.add_table(rows=1, cols=3)
+            t5.style = 'Table Grid'
+            h5 = t5.rows[0].cells
+            h5[0].paragraphs[0].add_run("평가 요소").bold = True
+            h5[1].paragraphs[0].add_run("세부 채점 기준").bold = True
+            h5[2].paragraphs[0].add_run("배점").bold = True
+
+            ai_eval = eval_dict.get(p_name, {})
+            rubrics = ai_eval.get('rubrics', [])
+            
+            if rubrics:
+                for r in rubrics:
+                    r_cells = t5.add_row().cells
+                    r_cells[0].paragraphs[0].add_run(r.get('element', ''))
+                    
+                    crit_p = r_cells[1].paragraphs[0]
+                    for c in r.get('criteria', []):
+                        bullet = c if c.startswith('•') else f"• {c}"
+                        crit_p.add_run(f"{bullet}\n")
+                        
+                    score_p = r_cells[2].paragraphs[0]
+                    for s in r.get('scores', []):
+                        score_p.add_run(f"{s}\n")
+            else:
+                for elem in perf.get('evalElements', []):
+                    r_cells = t5.add_row().cells
+                    r_cells[0].paragraphs[0].add_run(elem.get('name', ''))
+                    r_cells[1].paragraphs[0].add_run(f"• {elem.get('name')} 수행 능력이 우수함\n• 보통 수준\n• 노력 요함")
+                    r_cells[2].paragraphs[0].add_run(f"최고 {elem.get('maxScore')}점\n최저 {elem.get('minScore')}점")
+
+        # 메모리 스트림으로 파일 전달
         file_stream = io.BytesIO()
         doc.save(file_stream)
         file_stream.seek(0)
 
-        filename = f"평가계획서_{detail_subject if detail_subject else main_subject}.docx"
+        filename = f"평가계획서_{subject_title}.docx"
         return send_file(
             file_stream,
             as_attachment=True,
