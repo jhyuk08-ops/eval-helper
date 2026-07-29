@@ -20,7 +20,7 @@
     <h2 class="text-center mb-4 fw-bold text-primary">2022 개정 교육과정 평가계획서 자동 생성기</h2>
 
     <form id="evalForm">
-        <!-- API 키 입력 -->
+        <!-- 1. API 키 입력 -->
         <div class="card">
             <div class="card-header">1. Gemini API 키</div>
             <div class="card-body">
@@ -28,7 +28,7 @@
             </div>
         </div>
 
-        <!-- 학교 및 교과 정보 -->
+        <!-- 2. 학교 및 교과 정보 -->
         <div class="card">
             <div class="card-header">2. 기본 정보 설정</div>
             <div class="card-body">
@@ -71,9 +71,26 @@
             </div>
         </div>
 
-        <!-- 정기시험 정보 -->
+        <!-- 3. 해당 학기 성취기준 선택 -->
         <div class="card">
-            <div class="card-header">3. 정기시험 (지필평가) 비율 및 성취기준</div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>3. 학기 교육과정 성취기준 선택</span>
+                <div class="form-check form-check-inline text-white mb-0 fs-6">
+                    <input class="form-check-input" type="checkbox" id="selectAllSemester" onchange="toggleSelectAll('semester', this.checked)" checked>
+                    <label class="form-check-label text-white fw-bold" for="selectAllSemester">전체 선택</label>
+                </div>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-2">* 이번 학기에 평가할 성취기준을 먼저 선택하세요. 선택한 성취기준만 아래 정기시험 및 수행평가에서 선택할 수 있습니다.</p>
+                <div id="semesterStandards" class="border p-2 bg-light rounded" style="max-height: 180px; overflow-y: auto;">
+                    <!-- JS 로드 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. 정기시험 정보 -->
+        <div class="card">
+            <div class="card-header">4. 정기시험 (지필평가) 비율 및 성취기준</div>
             <div class="card-body">
                 <div class="row g-3 mb-3">
                     <div class="col-md-6">
@@ -85,21 +102,33 @@
                         <input type="number" class="form-control" id="exam2Ratio" value="30" min="0" max="100">
                     </div>
                 </div>
-                <div class="mb-2">
-                    <label class="form-label fw-bold">1차 정기시험 반영 성취기준 선택</label>
-                    <div id="exam1Standards" class="border p-2 bg-light rounded" style="max-height: 150px; overflow-y: auto;"></div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label fw-bold mb-0">1차 정기시험 반영 성취기준</label>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="checkbox" id="selectAllExam1" onchange="toggleSelectAll('exam1', this.checked)">
+                            <label class="form-check-label small fw-bold" for="selectAllExam1">전체 선택</label>
+                        </div>
+                    </div>
+                    <div id="exam1Standards" class="border p-2 bg-light rounded" style="max-height: 140px; overflow-y: auto;"></div>
                 </div>
                 <div>
-                    <label class="form-label fw-bold">2차 정기시험 반영 성취기준 선택</label>
-                    <div id="exam2Standards" class="border p-2 bg-light rounded" style="max-height: 150px; overflow-y: auto;"></div>
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label fw-bold mb-0">2차 정기시험 반영 성취기준</label>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input" type="checkbox" id="selectAllExam2" onchange="toggleSelectAll('exam2', this.checked)">
+                            <label class="form-check-label small fw-bold" for="selectAllExam2">전체 선택</label>
+                        </div>
+                    </div>
+                    <div id="exam2Standards" class="border p-2 bg-light rounded" style="max-height: 140px; overflow-y: auto;"></div>
                 </div>
             </div>
         </div>
 
-        <!-- 수행평가 정보 -->
+        <!-- 5. 수행평가 정보 -->
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span>4. 수행평가 영역 및 세부 채점 요소 설정</span>
+                <span>5. 수행평가 영역 및 세부 채점 요소 설정</span>
                 <button type="button" class="btn btn-sm btn-light text-primary fw-bold" onclick="addPerfArea()">+ 수행평가 영역 추가</button>
             </div>
             <div class="card-body" id="perfContainer">
@@ -120,7 +149,7 @@
 
 <script>
 let subjectHierarchy = {};
-let currentStandards = [];
+let allSubjectStandards = [];
 let perfCount = 0;
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -183,28 +212,83 @@ function loadStandards() {
     .then(res => res.json())
     .then(data => {
         if (!data.success) return;
-        currentStandards = data.standards || [];
-        renderExamStandards();
+        allSubjectStandards = data.standards || [];
         
-        // 기존 수행평가 영역의 성취기준 체크박스도 갱신
-        const perfContainer = document.getElementById('perfContainer');
-        if (perfContainer.children.length === 0) {
-            addPerfArea(); // 초기 1개 영역 추가
-        } else {
-            refreshAllPerfStandards();
-        }
+        // 1) 학기 성취기준 렌더링 (기본 전체선택)
+        renderSemesterStandards();
+        document.getElementById('selectAllSemester').checked = true;
     });
 }
 
-function renderExamStandards() {
+function renderSemesterStandards() {
+    const container = document.getElementById('semesterStandards');
+    container.innerHTML = '';
+    
+    if (allSubjectStandards.length === 0) {
+        container.innerHTML = '<span class="text-muted small">등록된 성취기준이 없습니다.</span>';
+        onSemesterStandardsChange();
+        return;
+    }
+
+    allSubjectStandards.forEach((std, i) => {
+        container.innerHTML += `
+            <div class="form-check">
+                <input class="form-check-input semester-std" type="checkbox" value="${escapeHtml(std)}" id="sem_${i}" onchange="onSemesterStandardsChange()" checked>
+                <label class="form-check-label" for="sem_${i}">${escapeHtml(std)}</label>
+            </div>
+        `;
+    });
+
+    onSemesterStandardsChange();
+}
+
+function getSelectedSemesterStandards() {
+    const checked = document.querySelectorAll('.semester-std:checked');
+    return Array.from(checked).map(c => c.value);
+}
+
+function onSemesterStandardsChange() {
+    // 학기 전체선택 체크박스 상태 업데이트
+    const allBoxes = document.querySelectorAll('.semester-std');
+    const checkedBoxes = document.querySelectorAll('.semester-std:checked');
+    const selectAllSem = document.getElementById('selectAllSemester');
+    if (allBoxes.length > 0) {
+        selectAllSem.checked = (allBoxes.length === checkedBoxes.length);
+    }
+
+    const activeStds = getSelectedSemesterStandards();
+
+    // 2) 선택된 학기 성취기준 기반으로 정기시험 및 수행평가 목록 동적 업데이트
+    renderExamStandards(activeStds);
+    refreshAllPerfStandards(activeStds);
+}
+
+function renderExamStandards(activeStds) {
+    const prevE1 = new Set(Array.from(document.querySelectorAll('.exam1-std:checked')).map(c => c.value));
+    const prevE2 = new Set(Array.from(document.querySelectorAll('.exam2-std:checked')).map(c => c.value));
+
     const e1 = document.getElementById('exam1Standards');
     const e2 = document.getElementById('exam2Standards');
     e1.innerHTML = ''; e2.innerHTML = '';
 
-    currentStandards.forEach((std, i) => {
-        e1.innerHTML += `<div class="form-check"><input class="form-check-input exam1-std" type="checkbox" value="${std}" id="e1_${i}"><label class="form-check-label" for="e1_${i}">${std}</label></div>`;
-        e2.innerHTML += `<div class="form-check"><input class="form-check-input exam2-std" type="checkbox" value="${std}" id="e2_${i}"><label class="form-check-label" for="e2_${i}">${std}</label></div>`;
+    if (activeStds.length === 0) {
+        e1.innerHTML = '<span class="text-muted small">선택된 학기 성취기준이 없습니다.</span>';
+        e2.innerHTML = '<span class="text-muted small">선택된 학기 성취기준이 없습니다.</span>';
+        updateSelectAllStatus('exam1');
+        updateSelectAllStatus('exam2');
+        return;
+    }
+
+    activeStds.forEach((std, i) => {
+        const isE1Checked = prevE1.has(std) ? 'checked' : '';
+        const isE2Checked = prevE2.has(std) ? 'checked' : '';
+
+        e1.innerHTML += `<div class="form-check"><input class="form-check-input exam1-std" type="checkbox" value="${escapeHtml(std)}" id="e1_${i}" ${isE1Checked} onchange="updateSelectAllStatus('exam1')"><label class="form-check-label" for="e1_${i}">${escapeHtml(std)}</label></div>`;
+        e2.innerHTML += `<div class="form-check"><input class="form-check-input exam2-std" type="checkbox" value="${escapeHtml(std)}" id="e2_${i}" ${isE2Checked} onchange="updateSelectAllStatus('exam2')"><label class="form-check-label" for="e2_${i}">${escapeHtml(std)}</label></div>`;
     });
+
+    updateSelectAllStatus('exam1');
+    updateSelectAllStatus('exam2');
 }
 
 function addPerfArea() {
@@ -216,7 +300,7 @@ function addPerfArea() {
         <h6 class="fw-bold text-primary mb-3">수행평가 영역 ${id}</h6>
         <div class="row g-3 mb-3">
             <div class="col-md-5">
-                <label class="form-label">영역명 (비워두면 AI가 성취기준에 맞게 자동생성)</label>
+                <label class="form-label">영역명 (비워두면 AI가 자동생성)</label>
                 <input type="text" class="form-control perf-name" placeholder="예: 서술형 평가, 포트폴리오">
             </div>
             <div class="col-md-3">
@@ -230,7 +314,13 @@ function addPerfArea() {
         </div>
 
         <div class="mb-3">
-            <label class="form-label fw-bold">선택 성취기준</label>
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <label class="form-label fw-bold mb-0">선택 성취기준</label>
+                <div class="form-check form-check-inline mb-0">
+                    <input class="form-check-input" type="checkbox" id="selectAllPerf_${id}" onchange="toggleSelectAll('perf_${id}', this.checked)">
+                    <label class="form-check-label small fw-bold" for="selectAllPerf_${id}">전체 선택</label>
+                </div>
+            </div>
             <div class="perf-standards border p-2 bg-light rounded" style="max-height: 120px; overflow-y: auto;">
                 ${getStandardsCheckboxesHtml(id)}
             </div>
@@ -252,7 +342,6 @@ function addPerfArea() {
                     </tr>
                 </thead>
                 <tbody id="elem_tbody_${id}">
-                    <!-- 기본 요소 1개 -->
                     <tr>
                         <td><input type="text" class="form-control form-control-sm elem-name" placeholder="예: 개념 이해 및 식 세우기"></td>
                         <td><input type="number" class="form-control form-control-sm elem-max" value="5"></td>
@@ -265,26 +354,94 @@ function addPerfArea() {
         </div>
     </div>`;
     document.getElementById('perfContainer').insertAdjacentHTML('beforeend', html);
+    updateSelectAllStatus(`perf_${id}`);
 }
 
 function getStandardsCheckboxesHtml(perfId) {
-    return currentStandards.map((std, i) => `
+    const activeList = getSelectedSemesterStandards();
+    if (activeList.length === 0) {
+        return '<span class="text-muted small">선택된 학기 성취기준이 없습니다.</span>';
+    }
+    return activeList.map((std, i) => `
         <div class="form-check">
-            <input class="form-check-input perf-std-${perfId}" type="checkbox" value="${std}" id="p_${perfId}_${i}">
-            <label class="form-check-label" for="p_${perfId}_${i}">${std}</label>
+            <input class="form-check-input perf-std-${perfId}" type="checkbox" value="${escapeHtml(std)}" id="p_${perfId}_${i}" onchange="updateSelectAllStatus('perf_${perfId}')">
+            <label class="form-check-label" for="p_${perfId}_${i}">${escapeHtml(std)}</label>
         </div>
     `).join('');
 }
 
-function refreshAllPerfStandards() {
+function refreshAllPerfStandards(activeStds) {
+    const perfContainer = document.getElementById('perfContainer');
+    if (perfContainer.children.length === 0) {
+        addPerfArea();
+        return;
+    }
+
+    const activeList = activeStds || getSelectedSemesterStandards();
     const cards = document.querySelectorAll('.perf-card');
+
     cards.forEach(card => {
         const id = card.id.replace('perf_card_', '');
         const stdBox = card.querySelector('.perf-standards');
+        const prevChecked = new Set(Array.from(card.querySelectorAll(`.perf-std-${id}:checked`)).map(c => c.value));
+
         if (stdBox) {
-            stdBox.innerHTML = getStandardsCheckboxesHtml(id);
+            if (activeList.length === 0) {
+                stdBox.innerHTML = '<span class="text-muted small">선택된 학기 성취기준이 없습니다.</span>';
+            } else {
+                stdBox.innerHTML = activeList.map((std, i) => {
+                    const isChecked = prevChecked.has(std) ? 'checked' : '';
+                    return `
+                        <div class="form-check">
+                            <input class="form-check-input perf-std-${id}" type="checkbox" value="${escapeHtml(std)}" id="p_${id}_${i}" ${isChecked} onchange="updateSelectAllStatus('perf_${id}')">
+                            <label class="form-check-label" for="p_${id}_${i}">${escapeHtml(std)}</label>
+                        </div>
+                    `;
+                }).join('');
+            }
+            updateSelectAllStatus(`perf_${id}`);
         }
     });
+}
+
+function toggleSelectAll(targetGroup, isChecked) {
+    if (targetGroup === 'semester') {
+        document.querySelectorAll('.semester-std').forEach(cb => cb.checked = isChecked);
+        onSemesterStandardsChange();
+    } else if (targetGroup === 'exam1') {
+        document.querySelectorAll('.exam1-std').forEach(cb => cb.checked = isChecked);
+    } else if (targetGroup === 'exam2') {
+        document.querySelectorAll('.exam2-std').forEach(cb => cb.checked = isChecked);
+    } else if (targetGroup.startsWith('perf_')) {
+        const perfId = targetGroup.replace('perf_', '');
+        document.querySelectorAll(`.perf-std-${perfId}`).forEach(cb => cb.checked = isChecked);
+    }
+}
+
+function updateSelectAllStatus(targetGroup) {
+    let selector = '';
+    let allCheckboxId = '';
+
+    if (targetGroup === 'exam1') {
+        selector = '.exam1-std';
+        allCheckboxId = 'selectAllExam1';
+    } else if (targetGroup === 'exam2') {
+        selector = '.exam2-std';
+        allCheckboxId = 'selectAllExam2';
+    } else if (targetGroup.startsWith('perf_')) {
+        const perfId = targetGroup.replace('perf_', '');
+        selector = `.perf-std-${perfId}`;
+        allCheckboxId = `selectAllPerf_${perfId}`;
+    }
+
+    if (selector && allCheckboxId) {
+        const allBoxes = document.querySelectorAll(selector);
+        const checkedBoxes = document.querySelectorAll(`${selector}:checked`);
+        const targetCb = document.getElementById(allCheckboxId);
+        if (targetCb) {
+            targetCb.checked = (allBoxes.length > 0 && allBoxes.length === checkedBoxes.length);
+        }
+    }
 }
 
 function addEvalElement(perfId) {
@@ -303,6 +460,11 @@ function addEvalElement(perfId) {
 function removePerfArea(id) {
     const card = document.getElementById(`perf_card_${id}`);
     if (card) card.remove();
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    return text.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function submitForm() {
