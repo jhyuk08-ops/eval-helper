@@ -39,7 +39,6 @@ def normalize_str(s):
 def extract_code(text):
     """
     텍스트에서 [코드] 추출 (예: '[9사01-01] 사회적 현상...' -> '9사01-01')
-    대괄호가 없을 경우 문자열 전체 반환
     """
     if not text:
         return ""
@@ -70,12 +69,12 @@ def set_cell_vertical_align(cell, align="center"):
 
 def group_achievement_levels(levels):
     """
-    동일한 성취수준 내용을 가진 등급들을 'A, B' 형태로 그룹화합니다.
+    동일한 성취수준 내용을 가진 등급들을 'A, B' 형태로 그룹화
     """
     if not levels:
         return []
 
-    grouped = [] # [{'grades': ['A', 'B'], 'desc': '...'}, ...]
+    grouped = []
     
     for lvl in levels:
         grade = lvl.get('grade', '').strip()
@@ -84,7 +83,6 @@ def group_achievement_levels(levels):
         if not desc:
             continue
 
-        # 기존 항목 중 내용이 완전히 동일한 항목이 있는지 확인
         found = False
         for g_item in grouped:
             if g_item['desc'] == desc:
@@ -99,7 +97,6 @@ def group_achievement_levels(levels):
                 'desc': desc
             })
 
-    # 'A, B' 형태로 문자열 변환 후 리스트 구성
     result = []
     for g_item in grouped:
         grade_str = ", ".join(g_item['grades']) if g_item['grades'] else "-"
@@ -279,7 +276,10 @@ def get_standards():
 @app.route('/generate', methods=['POST'])
 def generate():
     try:
-        api_key = request.form.get('apiKey')
+        api_key = request.form.get('apiKey', '').strip()
+        if not api_key:
+            return jsonify({'error': 'Gemini API Key가 입력되지 않았습니다.'}), 400
+
         school_type = request.form.get('schoolType', 'high')
         school_type_str = "고등학교" if school_type == 'high' else "중학교"
         grade = request.form.get('grade', '1')
@@ -301,8 +301,6 @@ def generate():
         for std_text in selected_standards:
             code = extract_code(std_text)
             raw_levels = achieve_levels_map.get(code, [])
-            
-            # 내용이 같은 성취수준 등급 그룹화 (예: A, B / C, D)
             grouped_levels = group_achievement_levels(raw_levels)
             std_levels_dict[std_text] = grouped_levels
 
@@ -338,7 +336,7 @@ def generate():
                 "sub_items": processed_subs
             })
 
-        # Gemini AI 생성
+        # Gemini AI 클라이언트 설정
         client = genai.Client(api_key=api_key)
         prompt = f"""
 당신은 대한민국 교육과정 및 학생평가 전문가입니다.
@@ -367,16 +365,8 @@ def generate():
     "마. ..."
   ],
   "direction": [
-    "가. 기본 방향:"
-      "1) ...",
-      "2) ...",
-      "3) ...",
-    "나. 방침:"
-      "1) ...",
-      "2) ...",
-      "3) ...",
-      "4) ...",
-      "5) ...",
+    "가. 기본 방향: ...",
+    "나. 방침: ..."
   ],
   "rubrics": [
     {{
@@ -400,6 +390,7 @@ def generate():
 }}
 """
 
+        # 호출 가능한 Gemini 모델 목록 순회
         candidate_models = ['gemini-3.6-flash', 'gemini-3.5-flash']
         response = None
         last_err = None
@@ -413,16 +404,22 @@ def generate():
                 if response and response.text:
                     break
             except Exception as e_mod:
+                print(f"[AI 모델 호출 시도 에러 ({m_name})]: {e_mod}")
                 last_err = e_mod
 
-        if not response:
-            raise last_err
+        # AI 생성 실패 시 기본 틀 제공 (서버가 강제 종료되지 않도록 예외 처리)
+        if response and response.text:
+            try:
+                raw_text = response.text.strip().replace('```json', '').replace('```', '')
+                ai_data = json.loads(raw_text)
+            except Exception as e_parse:
+                print(f"[AI 응답 파싱 실패]: {e_parse}")
+                ai_data = None
+        else:
+            print(f"[AI 생성 실패 - 기본 템플릿 적용]: {last_err}")
+            ai_data = None
 
-        try:
-            raw_text = response.text.strip().replace('```json', '').replace('```', '')
-            ai_data = json.loads(raw_text)
-        except Exception as e:
-            print(f"[AI 응답 파싱 에러]: {e}")
+        if not ai_data:
             ai_data = {
                 "purpose": [
                     f"가. {main_subject} 교과 교육과정 성취기준에 부합하는 종합적 사고력 평가",
@@ -487,18 +484,17 @@ def generate():
                     for lvl in levels:
                         row_cells = std_table.add_row().cells
                         row_cells[0].text = std
-                        row_cells[1].text = lvl.get('grade', '-') # 'A, B' 혹은 'A'
+                        row_cells[1].text = lvl.get('grade', '-')
                         row_cells[2].text = lvl.get('desc', '')
 
                         for idx, cell in enumerate(row_cells):
                             cell.width = widths[idx]
 
-                        # 등급 셀 중앙 정렬
                         row_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
                     end_row_idx = len(std_table.rows) - 1
 
-                    # 성취기준 셀 1번만 표기되도록 세로 병합 및 세로 중앙 정렬
+                    # 성취기준 셀 병합 및 세로 정렬
                     if end_row_idx > start_row_idx:
                         top_cell = std_table.cell(start_row_idx, 0)
                         bottom_cell = std_table.cell(end_row_idx, 0)
@@ -654,7 +650,8 @@ def generate():
 
     except Exception as e:
         print(f"[ERROR] 문서 생성 에러: {e}")
-        return jsonify({'error': str(e)}), 500
+        # sys.exit(1)을 전면 제거하고 JSON 에러 메시지를 프론트엔드로 반환하여 서버 다운을 방지
+        return jsonify({'error': f"서버 오류가 발생했습니다: {str(e)}"}), 500
 
 
 if __name__ == '__main__':
