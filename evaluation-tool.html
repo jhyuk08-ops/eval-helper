@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2022 개정 교육과정 평가계획서 작성 도우미</title>
+  <style>
+    :root {
+      --primary-color: #4a76a8;
+      --bg-color: #f4f6f9;
+      --card-bg: #ffffff;
+      --border-color: #dde2e5;
+    }
+    body {
+      font-family: '맑은 고딕', 'Malgun Gothic', sans-serif;
+      background-color: var(--bg-color);
+      color: #333;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    h1 {
+      color: var(--primary-color);
+      border-bottom: 2px solid var(--primary-color);
+      padding-bottom: 10px;
+      margin-top: 0;
+    }
+    .section {
+      background: #fafbfc;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .api-section {
+      border: 2px solid var(--primary-color);
+      background-color: #f0f4f9;
+    }
+    .section-title-box {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #2c3e50;
+    }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; font-weight: bold; margin-bottom: 5px; }
+    input[type="text"], input[type="password"], input[type="number"], select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 0.95rem;
+    }
+    .radio-group { display: flex; gap: 20px; }
+    .radio-group label { font-weight: normal; cursor: pointer; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .standards-box {
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+      background: #fff;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    .standard-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 0.9rem;
+    }
+    .perf-card {
+      background: #fff;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+    .btn {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .btn-secondary { background: #6c757d; padding: 4px 10px; font-size: 0.8rem; }
+    .btn-danger { background: #dc3545; padding: 4px 8px; font-size: 0.8rem; }
+    .btn-add { background: #28a745; margin-top: 10px; }
+    .elem-row { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+    .action-container { text-align: center; margin-top: 30px; }
+    #loadingSpinner { display: none; margin-top: 15px; color: var(--primary-color); font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>📋 2022 개정 교육과정 평가계획서 작성 도우미</h1>
+
+  <form id="evalForm">
+    <!-- 0. API 키 설정 -->
+    <div class="section api-section">
+      <div class="section-title-box">
+        <div class="section-title">🔑 Gemini API 키 입력</div>
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" style="font-size:0.85rem; color:#4a76a8; font-weight:bold;">[무료 API 키 발급받기]</a>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <input type="password" id="userApiKey" placeholder="Google AI Studio에서 발급받은 키(AIzaSy...)를 입력하세요" onchange="saveApiKey()">
+        <small style="color: #666; margin-top: 5px; display: block;">
+          * 입력한 API 키는 웹 브라우저에만 안전하게 저장되며, 다른 사람과 공유되지 않습니다.
+        </small>
+      </div>
+    </div>
+
+    <!-- 1. 기본 정보 -->
+    <div class="section">
+      <div class="section-title-box">
+        <div class="section-title">1. 기본 정보 설정</div>
+      </div>
+      
+      <div class="form-group">
+        <label>학교급</label>
+        <div class="radio-group">
+          <label><input type="radio" name="schoolType" value="middle" onchange="loadSubjects()"> 중학교</label>
+          <label><input type="radio" name="schoolType" value="high" checked onchange="loadSubjects()"> 고등학교</label>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="grade">학년</label>
+          <select id="grade" name="grade">
+            <option value="1">1학년</option>
+            <option value="2">2학년</option>
+            <option value="3">3학년</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="semester">학기</label>
+          <select id="semester" name="semester">
+            <option value="1학기">1학기</option>
+            <option value="2학기">2학기</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="mainSubjectSelect">교과</label>
+          <select id="mainSubjectSelect" name="교과" onchange="handleMainSubjectChange()">
+            <option value="">교과를 선택하세요</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="detailSubjectGroup">
+          <label for="detailSubjectSelect">세부교과</label>
+          <select id="detailSubjectSelect" name="세부교과" onchange="handleDetailSubjectChange()">
+            <option value="">세부교과를 선택하세요</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 성취기준 목록 -->
+    <div class="section">
+      <div class="section-title-box">
+        <div class="section-title">2. 이번 학기 평가 대상 성취기준 선택</div>
+        <div>
+          <button type="button" class="btn btn-secondary" onclick="toggleAllMainStandards(true)">전체 선택</button>
+          <button type="button" class="btn btn-secondary" onclick="toggleAllMainStandards(false)">전체 해제</button>
+        </div>
+      </div>
+      <div class="standards-box" id="standardsList">
+        학교급 및 교과를 선택해주세요.
+      </div>
+    </div>
+
+    <!-- 3. 정기시험 설정 -->
+    <div class="section">
+      <div class="section-title-box">
+        <div class="section-title">3. 정기시험 설정</div>
+      </div>
+      
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="exam1Ratio">1차 정기시험 반영비율 (%)</label>
+          <input type="number" id="exam1Ratio" value="30" min="0" max="100">
+        </div>
+        <div class="form-group">
+          <label for="exam2Ratio">2차 정기시험 반영비율 (%)</label>
+          <input type="number" id="exam2Ratio" value="30" min="0" max="100">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>1차 정기시험 평가 성취기준 선택</label>
+        <div class="standards-box" id="exam1StandardsBox">상단에서 성취기준을 먼저 선택해주세요.</div>
+      </div>
+
+      <div class="form-group">
+        <label>2차 정기시험 평가 성취기준 선택</label>
+        <div class="standards-box" id="exam2StandardsBox">상단에서 성취기준을 먼저 선택해주세요.</div>
+      </div>
+    </div>
+
+    <!-- 4. 수행평가 영역 설정 -->
+    <div class="section">
+      <div class="section-title-box">
+        <div class="section-title">4. 수행평가 영역 설정</div>
+      </div>
+      <div id="perfContainer"></div>
+      <button type="button" class="btn btn-add" onclick="addPerfArea()">+ 수행평가 영역 추가</button>
+    </div>
+
+    <div class="action-container">
+      <button type="button" class="btn" onclick="generateDocument()">📄 평가계획서 Word 문서 생성</button>
+      <div id="loadingSpinner">⏳ Gemini 2.5 Flash가 평가계획서를 생성 중입니다. 잠시만 기다려주세요...</div>
+    </div>
+  </form>
+</div>
+
+<script>
+  // 상대 경로 사용으로 로컬 및 배포 서버 모두 자동 지원
+  const API_BASE_URL = '';
+
+  let highSchoolData = {};
+  let currentLoadedStandards = [];
+  let selectedSemesterStandards = [];
+  let perfCount = 0;
+
+  window.addEventListener('DOMContentLoaded', () => {
+    // 저장된 API 키 불러오기
+    const savedKey = localStorage.getItem('user_gemini_api_key');
+    if (savedKey) {
+      document.getElementById('userApiKey').value = savedKey;
+    }
+
+    loadSubjects();
+    addPerfArea();
+  });
+
+  function saveApiKey() {
+    const key = document.getElementById('userApiKey').value.trim();
+    localStorage.setItem('user_gemini_api_key', key);
+  }
+
+  async function loadSubjects() {
+    const schoolType = document.querySelector('input[name="schoolType"]:checked').value;
+    const mainSelect = document.getElementById('mainSubjectSelect');
+    const detailSelect = document.getElementById('detailSubjectSelect');
+    const detailGroup = document.getElementById('detailSubjectGroup');
+
+    mainSelect.innerHTML = '<option value="">교과를 선택하세요</option>';
+    detailSelect.innerHTML = '<option value="">세부교과를 선택하세요</option>';
+    clearStandardsBoxes();
+
+    if (schoolType === 'middle') {
+      detailGroup.style.display = 'none';
+    } else {
+      detailGroup.style.display = 'block';
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/get_subjects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schoolType: schoolType })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        if (schoolType === 'middle') {
+          (data.subjects || []).forEach(subj => mainSelect.add(new Option(subj, subj)));
+        } else {
+          highSchoolData = data.hierarchy || {};
+          (data.subjects || Object.keys(highSchoolData)).forEach(subj => mainSelect.add(new Option(subj, subj)));
+        }
+      }
+    } catch (err) {
+      console.error("교과 불러오기 에러:", err);
+    }
+  }
+
+  function handleMainSubjectChange() {
+    const schoolType = document.querySelector('input[name="schoolType"]:checked').value;
+    const selectedMain = document.getElementById('mainSubjectSelect').value;
+    const detailSelect = document.getElementById('detailSubjectSelect');
+
+    detailSelect.innerHTML = '<option value="">세부교과를 선택하세요</option>';
+    clearStandardsBoxes();
+
+    if (!selectedMain) return;
+
+    if (schoolType === 'middle') {
+      fetchStandards('middle', selectedMain, '');
+    } else {
+      const details = highSchoolData[selectedMain] || [];
+      details.forEach(detailName => detailSelect.add(new Option(detailName, detailName)));
+    }
+  }
+
+  function handleDetailSubjectChange() {
+    const selectedMain = document.getElementById('mainSubjectSelect').value;
+    const selectedDetail = document.getElementById('detailSubjectSelect').value;
+
+    if (selectedMain && selectedDetail) {
+      fetchStandards('high', selectedMain, selectedDetail);
+    } else {
+      clearStandardsBoxes();
+    }
+  }
+
+  async function fetchStandards(schoolType, mainSubject, detailSubject) {
+    const standardsList = document.getElementById('standardsList');
+    standardsList.innerHTML = '성취기준 로딩 중...';
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/get_standards`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schoolType: schoolType, 교과: mainSubject, 세부교과: detailSubject })
+      });
+      const data = await res.json();
+
+      if (data.success && data.standards && data.standards.length > 0) {
+        currentLoadedStandards = data.standards;
+        renderMainStandardsList();
+      } else {
+        currentLoadedStandards = [];
+        standardsList.innerHTML = '등록된 성취기준이 없습니다.';
+        updateFilteredStandards();
+      }
+    } catch (err) {
+      console.error("성취기준 로드 실패:", err);
+      standardsList.innerHTML = '성취기준을 불러오지 못했습니다.';
+      updateFilteredStandards();
+    }
+  }
+
+  function renderMainStandardsList() {
+    const mainBox = document.getElementById('standardsList');
+    mainBox.innerHTML = '';
+
+    currentLoadedStandards.forEach((std, idx) => {
+      const div = document.createElement('div');
+      div.className = 'standard-item';
+      div.innerHTML = `
+        <input type="checkbox" class="main-std-cb" value="${escapeHtml(std)}" id="main_std_${idx}" checked onchange="updateFilteredStandards()">
+        <label for="main_std_${idx}" style="font-weight:normal; margin-bottom:0; cursor:pointer;">${std}</label>
+      `;
+      mainBox.appendChild(div);
+    });
+
+    updateFilteredStandards();
+  }
+
+  function toggleAllMainStandards(checked) {
+    document.querySelectorAll('.main-std-cb').forEach(cb => cb.checked = checked);
+    updateFilteredStandards();
+  }
+
+  function updateFilteredStandards() {
+    const checkedBoxes = document.querySelectorAll('.main-std-cb:checked');
+    selectedSemesterStandards = Array.from(checkedBoxes).map(cb => cb.value);
+
+    const exam1Checked = getCheckedValues('exam1_std');
+    const exam2Checked = getCheckedValues('exam2_std');
+
+    const perfCheckedMap = {};
+    document.querySelectorAll('.perf-card').forEach(card => {
+      const perfId = card.dataset.id;
+      perfCheckedMap[perfId] = getCheckedValues(`perf_std_${perfId}`);
+    });
+
+    renderCheckboxListFiltered('exam1StandardsBox', 'exam1_std', exam1Checked);
+    renderCheckboxListFiltered('exam2StandardsBox', 'exam2_std', exam2Checked);
+
+    document.querySelectorAll('.perf-card').forEach(card => {
+      const perfId = card.dataset.id;
+      renderCheckboxListFiltered(`perf_stds_${perfId}`, `perf_std_${perfId}`, perfCheckedMap[perfId] || []);
+    });
+  }
+
+  function renderCheckboxListFiltered(containerId, checkboxName, previouslyCheckedValues = []) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (selectedSemesterStandards.length === 0) {
+      container.innerHTML = '<span style="color:#888;">상단 [2. 교과 성취기준 목록]에서 성취기준을 선택해주세요.</span>';
+      return;
+    }
+
+    selectedSemesterStandards.forEach((std, idx) => {
+      const div = document.createElement('div');
+      div.className = 'standard-item';
+      const isChecked = previouslyCheckedValues.includes(std) ? 'checked' : '';
+      div.innerHTML = `
+        <input type="checkbox" name="${checkboxName}" value="${escapeHtml(std)}" id="${checkboxName}_${idx}" ${isChecked}>
+        <label for="${checkboxName}_${idx}" style="font-weight:normal; margin-bottom:0; cursor:pointer;">${std}</label>
+      `;
+      container.appendChild(div);
+    });
+  }
+
+  function clearStandardsBoxes() {
+    currentLoadedStandards = [];
+    selectedSemesterStandards = [];
+    document.getElementById('standardsList').innerHTML = '학교급 및 교과를 선택해주세요.';
+    updateFilteredStandards();
+  }
+
+  function addPerfArea() {
+    perfCount++;
+    const container = document.getElementById('perfContainer');
+    const card = document.createElement('div');
+    card.className = 'perf-card';
+    card.dataset.id = perfCount;
+    card.id = `perf_card_${perfCount}`;
+
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <strong style="color:var(--primary-color);">영역 ${perfCount}</strong>
+        <button type="button" class="btn btn-danger" onclick="removePerfArea(${perfCount})">삭제</button>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label>수행평가 영역명</label>
+          <input type="text" class="perf-name" placeholder="예: 주제 탐구 보고서" value="수행평가 ${perfCount}">
+        </div>
+        <div class="form-group">
+          <label>반영비율 (%)</label>
+          <input type="number" class="perf-ratio" value="20" min="0" max="100">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>평가 성취기준 선택</label>
+        <div class="standards-box perf-stds-box" id="perf_stds_${perfCount}">
+          상단에서 성취기준을 먼저 선택해주세요.
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>세부 평가요소 및 배점</label>
+        <div class="elem-container" id="elem_container_${perfCount}"></div>
+        <button type="button" class="btn btn-secondary" style="margin-top:8px;" onclick="addEvalElement(${perfCount})">+ 평가요소 추가</button>
+      </div>
+    `;
+
+    container.appendChild(card);
+    renderCheckboxListFiltered(`perf_stds_${perfCount}`, `perf_std_${perfCount}`, []);
+    addEvalElement(perfCount);
+  }
+
+  function removePerfArea(id) {
+    const card = document.getElementById(`perf_card_${id}`);
+    if (card) card.remove();
+  }
+
+  function addEvalElement(perfId) {
+    const container = document.getElementById(`elem_container_${perfId}`);
+    const row = document.createElement('div');
+    row.className = 'elem-row';
+    row.innerHTML = `
+      <input type="text" class="elem-name" placeholder="평가요소명 (예: 내용의 적절성)" style="flex:2;">
+      <input type="number" class="elem-max" placeholder="최고점" value="10" style="flex:1;">
+      <input type="number" class="elem-min" placeholder="최저점" value="2" style="flex:1;">
+      <button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button>
+    `;
+    container.appendChild(row);
+  }
+
+  function getCheckedValues(name) {
+    return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(cb => cb.value);
+  }
+
+  async function generateDocument() {
+    const apiKey = document.getElementById('userApiKey').value.trim();
+    if (!apiKey) {
+      alert("Gemini API 키를 입력해주세요!\n상단 [무료 API 키 발급받기] 링크에서 바로 발급받으실 수 있습니다.");
+      document.getElementById('userApiKey').focus();
+      return;
+    }
+
+    const schoolType = document.querySelector('input[name="schoolType"]:checked').value;
+    const grade = document.getElementById('grade').value;
+    const semester = document.getElementById('semester').value;
+    const subject = document.getElementById('mainSubjectSelect').value;
+    const detailSubject = schoolType === 'high' ? document.getElementById('detailSubjectSelect').value : subject;
+
+    if (!subject) {
+      alert("교과를 선택해주세요.");
+      return;
+    }
+
+    const exam1Stds = getCheckedValues('exam1_std');
+    const exam2Stds = getCheckedValues('exam2_std');
+
+    const examRatios = [
+      parseInt(document.getElementById('exam1Ratio').value || 0),
+      parseInt(document.getElementById('exam2Ratio').value || 0)
+    ];
+
+    const examStandards = {
+      "1차 정기시험": exam1Stds,
+      "2차 정기시험": exam2Stds
+    };
+
+    const perfList = [];
+    document.querySelectorAll('.perf-card').forEach(card => {
+      const perfId = card.dataset.id;
+      const perfName = card.querySelector('.perf-name').value || `수행평가 ${perfId}`;
+      const perfRatio = parseInt(card.querySelector('.perf-ratio').value || 0);
+      const perfStds = getCheckedValues(`perf_std_${perfId}`);
+
+      const evalElements = [];
+      card.querySelectorAll('.elem-row').forEach(row => {
+        const elemName = row.querySelector('.elem-name').value;
+        const maxScore = parseInt(row.querySelector('.elem-max').value || 10);
+        const minScore = parseInt(row.querySelector('.elem-min').value || 2);
+        if (elemName) {
+          evalElements.push({ name: elemName, maxScore: maxScore, minScore: minScore });
+        }
+      });
+
+      perfList.push({
+        name: perfName,
+        ratio: perfRatio,
+        standards: perfStds,
+        evalElements: evalElements
+      });
+    });
+
+    const formData = new FormData();
+    formData.append('apiKey', apiKey);
+    formData.append('schoolType', schoolType);
+    formData.append('grade', grade);
+    formData.append('semester', semester);
+    formData.append('교과', subject);
+    formData.append('세부교과', detailSubject);
+    formData.append('examRatios', JSON.stringify(examRatios));
+    formData.append('examStandards', JSON.stringify(examStandards));
+    formData.append('perfList', JSON.stringify(perfList));
+
+    const spinner = document.getElementById('loadingSpinner');
+    spinner.style.display = 'block';
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/generate`, { method: 'POST', body: formData });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "문서 생성 실패");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `평가계획서_${detailSubject}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("문서 생성 실패:", err);
+      alert("평가계획서 생성 실패: " + err.message);
+    } finally {
+      spinner.style.display = 'none';
+    }
+  }
+
+  function escapeHtml(text) {
+    return text.replace(/"/g, '&quot;');
+  }
+</script>
+
+</body>
+</html>
